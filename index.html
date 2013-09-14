@@ -1,0 +1,482 @@
+<!-- THIS CODE IS TERRRRRIBLEEEEEEEEE -->
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1" />
+    <title>Alfred!</title>
+    
+    <script type="text/javascript" src="http://ajax.googleapis.com/ajax/libs/jquery/1.10.2/jquery.min.js"></script>
+    
+    <style>
+      body { margin: 0; padding: 0;}
+      canvas { margin:0; padding:0; background: url('clouds.jpg'); }
+      h1 { font-family: 'arial'; color: white; position: absolute; left: 20px;}
+      h2 { position: relative; font-family: 'arial'; top: 50%; text-align: center;}
+      #sun { position: absolute; right: 100px;}
+    </style>
+    
+    <h1>Lives: <span id="lifecount">9</span></h1>
+    <img id='sun' src="sun.png"/>
+    <canvas id="stage" width="400" height="400">
+      <p>Your browser doesn't support canvas.</p>
+    </canvas>
+
+    <h2>Game Over<a href="index.html"><br>Try Again</a></h2>
+    <audio loop="loop" autoplay="autoplay">
+      <source src="waves.mp3" type="audio/mp3">
+    </audio>
+    
+    <script type="text/javascript">
+      
+      /*
+       * @author stephen burgess (steve@flashmonkey.co.uk)
+       * based on AS2 wave by Paul Lewis (http://www.anygivenfriday.com)
+       * which was based on Yugo Nakamura's original (http://yugop.com/)
+       */
+    
+      var stage = document.getElementById('stage');
+      
+      var lives = 9;
+      var color = "#374694";
+      var springs = [];
+      var storeY;
+      var extend = 100;
+      var fK = .95;
+      var particles = [];
+      var currentDrag = null;
+      var catOnBoat = true;
+      var catInWater = false;
+      var mouseX = 0;
+      var mouseY = 0;
+      var oldX   = 0;
+      var catSound = 0;
+      var stageWidth = $(document).width();
+      var stageHeight = $(document).height();
+      var boatX = 0;
+      var boatY = 0;
+      var boatRot = 0;
+      var catX  = 0;
+      var catY  = 0;
+      var catRotate = 0;
+      var catSpeedY = 0;
+      var catSpeedX = 0;
+      var catRotateSpeed = 0;
+      var targetX = 0;
+      var targetRot = 0;
+      var targetY = 0;
+
+      var cable = [];
+      var cableSegments = 10;
+      for (var i = 0; i < cableSegments; i++) {
+        cable.push({x: 0, y: 0});
+      }
+      stage.width = stageWidth;
+      stage.height = stageHeight;
+
+      var waterBackground = document.createElement('IMG');
+      waterBackground.src = "water.jpg"
+      
+      var boatSprite = null;
+      var boatLeftSprite = document.createElement('IMG');
+      boatLeftSprite.src = "boat.png"
+
+      var boatRightSprite = document.createElement('IMG');
+      boatRightSprite.src = "boat2.png"
+
+      var catSprite = document.createElement('IMG');
+      catSprite.src = "miso.png"
+
+      var IE = document.all ? true : false;
+      if(!IE) document.addEventListener(Event.MOUSEMOVE, getMouseXY, false);
+      document.onmousemove = getMouseXY;
+      
+      window.onresize = function(event)
+      {
+        stage.width = 10;
+        stage.height = 10;
+        stageWidth = $(document).width();
+        stageHeight = $(document).height();
+        stage.width = stageWidth;
+        stage.height = stageHeight;
+        
+        generate();
+      }
+      
+      generate();
+      
+      var drawingCanvas = document.getElementById('stage');
+      if(drawingCanvas.getContext)
+      {
+        var context = drawingCanvas.getContext('2d');
+        setInterval(render, 20);
+      }
+      
+      
+      function genHex()
+      {
+        colors = new Array(14)
+        colors[0]="0"
+        colors[1]="1"
+        colors[2]="2"
+        colors[3]="3"
+        colors[4]="4"
+        colors[5]="5"
+        colors[5]="6"
+        colors[6]="7"
+        colors[7]="8"
+        colors[8]="9"
+        colors[9]="a"
+        colors[10]="b"
+        colors[11]="c"
+        colors[12]="d"
+        colors[13]="e"
+        colors[14]="f"
+        
+        digit = new Array(5)
+        color=""
+        for (i=0;i<6;i++)
+        {
+          digit[i]=colors[Math.round(Math.random()*14)]
+          color = color+digit[i]
+        }
+        
+        return color;
+      }
+      
+      
+      function generate()
+      {
+        var total = Math.ceil(stageWidth / 25);
+        springs = [];
+        particles = [];
+        
+        var space = (stageWidth + extend) / total;
+        var xpos = (space * .5) - (extend * .5);
+        var ypos = stageHeight * .5;
+        
+        for(var i = 0; i < total; i++)
+        {
+          var particle = {};
+          particle.x = particle.xpos = xpos;
+          particle.y = particle.ypos = particle.origY = ypos;
+          particle.ay = 0;
+          particle.vy = 0;
+          particle.mass = 10;
+          particles[particles.length] = particle;
+          
+          xpos += space;
+        }
+        boatY = particles[0].y;
+        
+        
+        storeY = mouseY;
+        for(var u = 0; u < particles.length-1; u++) springs.push({iLengthY:(particles[u+1].y - particles[u].y)});
+      }
+
+      function findClosestParticle(x, y) {
+        var smallestDist = Infinity;
+        var j = particles.length;
+        var target = null;
+        while(--j > -1)
+          {
+            var dx = x - particles[j].x;
+            var dy = y - particles[j].y;
+            var dist = Math.sqrt(dx * dx + dy * dy);
+            
+            if(dist < smallestDist)
+            {
+              smallestDist = dist;
+              target = j;
+            }
+          }
+        return target;
+      }
+
+      function findClosestParticleHorizontally(x) {
+        var smallestDist = Infinity;
+        var j = particles.length;
+        var target = null;
+        while(--j > -1)
+          {
+            var dist = Math.abs(x - particles[j].x);
+
+            if(dist < smallestDist)
+            {
+              smallestDist = dist;
+              target = j;
+            }
+          }
+        return target;
+      }
+      
+      
+      $('body').click(function() {
+        if (catOnBoat && lives >= 0) {
+          catX = boatX;
+          catY = boatY - 30;
+          catOnBoat = false;
+          catSpeedY = 30;
+          catSpeedX = (targetX - boatX) * 0.05;
+          catSound = (catSound + 1) % 3;
+          var cat = new Audio('cat' + catSound + '.m4a');
+          cat.play();
+          if (mouseX > targetX) {
+            catRotateSpeed = 0.01;
+          } else {
+            catRotateSpeed = -0.01;
+          }
+        }
+      });
+
+       function mouseMove()
+       { 
+         if (oldX <= mouseX) {
+           boatSprite = boatRightSprite;
+         } else {
+           boatSprite = boatLeftSprite;
+         }
+         oldX = mouseX;
+         //var target = findClosestParticle(mouseX, mouseY);
+         //var particle = particles[target];
+      //
+         //if(particle && mouseY > particle.y)
+         //{
+         //  var speed = mouseY - storeY;
+        //
+         //  particles[target - 2].vy = speed / 6;
+         //  particles[target - 1].vy = speed / 5;
+         //  particles[target].vy = speed / 3;
+         //  particles[target + 1].vy = speed / 5;
+         //  particles[target + 2].vy = speed / 6;
+      //
+         //  storeY = mouseY;
+         //}
+       }
+      
+      
+      function render()
+      {
+        particles[Math.round(Math.random() * particles.length)].vy += Math.random() * 5;
+        for(var u = particles.length-1; u >= 0; --u)
+        {
+          var fExtensionY = 0;
+          var fForceY = 0;
+        
+          if(u > 0)
+          {
+            fExtensionY = particles[u-1].y - particles[u].y - springs[u-1].iLengthY;
+            fForceY += -fK * fExtensionY;
+          }
+          
+          if(u < particles.length-1)
+          {
+            fExtensionY = particles[u].y - particles[u+1].y - springs[u].iLengthY;
+            fForceY += fK * fExtensionY;
+          }
+          
+          fExtensionY = particles[u].y - particles[u].origY;
+          fForceY += fK/15 * fExtensionY;
+          
+          particles[u].ay = -fForceY/particles[u].mass;
+          particles[u].vy += particles[u].ay;
+          particles[u].ypos += particles[u].vy;
+          particles[u].vy /= 1.04;
+        }
+        
+        context.clearRect(0, 0, stageWidth, stageHeight);
+        context.fillStyle = color;
+        context.beginPath();
+        
+        for(u = 0; u < particles.length; u++)
+        {
+          if(u==0)
+          {
+            context.moveTo(particles[u].xpos+(particles[u+1].xpos-particles[u].xpos)/2,particles[u].ypos+(particles[u+1].ypos-particles[u].ypos)/2);
+          }
+          else if(u < particles.length-1)
+          {
+            context.quadraticCurveTo(particles[u].xpos,particles[u].ypos,particles[u].xpos+(particles[u+1].xpos-particles[u].xpos)/2,particles[u].ypos+(particles[u+1].ypos-particles[u].ypos)/2);
+          }
+          particles[u].x = particles[u].xpos;
+          particles[u].y = particles[u].ypos;
+        }
+        
+        context.lineTo(stageWidth+50, stageHeight+50);
+        context.lineTo(-50, stageHeight+50);
+        context.lineTo(-50, stageHeight/2);
+        context.closePath();
+        context.fill();
+        context.save();
+        context.clip();   
+        context.drawImage(waterBackground, 0, 0, stageWidth, stageHeight);
+        context.restore();
+
+        
+        targetX = mouseX;
+        boatX -= (boatX - targetX) / 15;
+        var closestParticleIndex = findClosestParticle(boatX, boatY);
+        var closestParticle = particles[closestParticleIndex];
+        targetY = closestParticle.y - boatSprite.height;
+        boatY -= (boatY - targetY) / 5;
+
+
+        var targetRot = findAngle(closestParticleIndex);
+        context.save();
+        context.translate(boatX, boatY);
+        boatRot -= (boatRot - targetRot) / 50;
+        context.rotate(boatRot);
+        context.translate(-boatSprite.width * 0.5, 0);
+        context.drawImage(boatSprite, 0, 0);
+        if (catOnBoat) {
+          renderCat();
+        }
+        context.scale(-1, 1);
+        context.restore();
+
+        if (!catOnBoat) {
+          context.save();
+          renderCat();
+          context.restore();
+        }
+        renderCable();
+
+        
+        /*var i = particles.length;
+        while(--i > -1)
+        {
+          context.fillStyle = "#000000";
+          context.beginPath();
+          context.arc(particles[i].x,particles[i].y,1,0,Math.PI*2,true);
+          context.closePath();
+          context.fill();
+
+        }*/
+      }
+
+      function renderCat() {
+        if (!catOnBoat) {
+          if (catInWater) {
+            catSpeedY = -5;
+            catSpeedX *= 0.8;
+            catRotate += 0.01;
+        } else {
+            catSpeedY -= 1;
+          }
+          catRotate += catRotateSpeed
+          catX += catSpeedX;
+          catY -= catSpeedY;
+          if (catX > stageWidth) {
+            catX = 0;
+          }
+          if (catX < 0) {
+            catX = stageWidth;
+          }
+          context.translate(catX, catY);
+          context.rotate(catRotate);
+          context.drawImage(catSprite, 0, 0);
+
+          if (catSpeedY < 0) {
+            var dx = catX - boatX;
+            var dy = catY - boatY;
+            var dist = Math.sqrt(dx * dx + dy * dy);
+            if (dist < 150) {
+              catOnBoat = true;
+              catRotate = 0;
+            } else if (!catInWater) {
+              var closest = particles[findClosestParticle(catX, catY)];
+              var dy = closest.y - catY;
+              if (dy < 0) {
+                var splash = new Audio('splash.mp3');
+                splash.play();
+                closest.y -= 200;
+                catInWater = true;
+                catSpeedY = 0;
+              }
+            }
+          }
+
+          if (catY > stageHeight) {
+            catRotate = 0;
+            catOnBoat = true;
+            catInWater = false;
+            lives -= 1;
+            if (lives >= 0) {
+              $('#lifecount').text(lives);
+            } else {
+              $('canvas').fadeOut();
+              $('#sun').fadeOut();
+            }
+          }
+        } else {
+          context.drawImage(catSprite, 120, -30);
+        }
+      }
+
+      function renderCable() {
+        cable[0].x = boatX + 20;
+        cable[0].y = boatY + 40;
+        for (var i = 1; i < cable.length; i++) {
+          cable[i].y += 2;
+        }
+
+
+        context.beginPath();
+        for (cableIndex in cable) {
+          var index = parseInt(cableIndex);
+          var particle = cable[index];
+          var nextParticle = cable[index + 1];
+
+          var dx = nextParticle.x - particle.x;
+          var dy = nextParticle.y - particle.y;
+          var dist = Math.sqrt(dx * dx + dy * dy);
+          var angle = Math.atan2(dy, dx);
+          if (dist > 15) {
+            dist = 15;
+          }
+          nextParticle.x = particle.x + dist * Math.cos(angle);
+          nextParticle.y = particle.y + dist * Math.sin(angle);
+
+          context.moveTo(particle.x, particle.y);
+          context.lineTo(nextParticle.x, nextParticle.y);
+          context.stroke();
+        }
+      }
+
+      function findAngle(index) {
+        var p1 = particles[index];
+        var p2 = particles[index + 1];
+        if (p2 == null) {
+          p2 = p1;
+        }
+        var o = p2.x - p1.x;
+        var a = p2.y - p1.y;
+        var angle = Math.atan2(a, o);
+        return angle;
+      }
+      
+      function getMouseXY(e)
+      {
+          if(IE)
+          {
+            mouseX = event.clientX + document.body.scrollLeft
+            mouseY = event.clientY + document.body.scrollTop
+          }
+          else
+          {
+            mouseX = e.pageX
+            mouseY = e.pageY
+          }  
+          
+          if(mouseX < 0) {mouseX = 0;}
+          if(mouseY < 0) {mouseY = 0;}  
+          
+          mouseMove();
+          
+          return true;
+      }
+      
+    </script>
+    
+
+    
+  </head>
+</html>
