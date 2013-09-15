@@ -12,18 +12,36 @@
       h1 { font-family: 'arial'; color: white; position: absolute; left: 20px;}
       h2 { position: relative; font-family: 'arial'; top: 50%; text-align: center;}
       #sun { position: absolute; right: 100px;}
+      #gameover { height: 100%; display: none; }
+      .bird { position: absolute; width: 50px; height: 31px; background: url('bird.gif'); left: 10px; top: 10px;}
+      .flip-horizontal
+      {
+        -moz-transform: scaleX(-1);
+        -webkit-transform: scaleX(-1);
+        -o-transform: scaleX(-1);
+        transform: scaleX(-1);
+        filter: FlipH; /*for IE*/
+        -ms-filter: “FlipH”;
+      }
     </style>
     
-    <h1>Lives: <span id="lifecount">9</span></h1>
+    <h1>Lives: <span id="lifecount">9</span><br>
+      Score: <span class="points">0</span><br>
+      Time Left: <span id="timeLeft"></span></h1>
     <img id='sun' src="sun.png"/>
     <canvas id="stage" width="400" height="400">
       <p>Your browser doesn't support canvas.</p>
     </canvas>
-
-    <h2>Game Over<a href="index.html"><br>Try Again</a></h2>
-    <audio loop="loop" autoplay="autoplay">
-      <source src="waves.mp3" type="audio/mp3">
+    <div id="gameover">
+      <h2>Game Over<br>Score: <span class="points">0</span><a href="index.html"><br>Try Again</a><br></h2>
+    </div>
+    <audio loop="loop" id="waveSound" autoplay="autoplay">
+      <source src="waves.ogg" type="audio/ogg">
     </audio>
+    <audio loop="loop" id="boatSound" autoplay="autoplay">
+      <source src="boat.ogg" type="audio/ogg">
+    </audio>
+
     
     <script type="text/javascript">
       
@@ -33,8 +51,10 @@
        * which was based on Yugo Nakamura's original (http://yugop.com/)
        */
     
+      $('#waveSound')[0].volume = 0.5;
       var stage = document.getElementById('stage');
-      
+      var points = 0;
+      var timeLeft = 120;
       var lives = 9;
       var color = "#374694";
       var springs = [];
@@ -52,17 +72,21 @@
       var stageWidth = $(document).width();
       var stageHeight = $(document).height();
       var boatX = 0;
-      var boatY = 0;
+      var boatY = 200;
       var boatRot = 0;
       var catX  = 0;
       var catY  = 0;
       var catRotate = 0;
       var catSpeedY = 0;
       var catSpeedX = 0;
+      var direction = 'left';
       var catRotateSpeed = 0;
       var targetX = 0;
       var targetRot = 0;
       var targetY = 0;
+      var sparks = [];
+      var sparkCount = 10;
+      var gameLoop = null;
 
       var cable = [];
       var cableSegments = 10;
@@ -107,7 +131,19 @@
       if(drawingCanvas.getContext)
       {
         var context = drawingCanvas.getContext('2d');
-        setInterval(render, 20);
+        gameLoop = setInterval(render, 20);
+      }
+
+      function padWithZeros(num) {
+        if (num < 10) {
+          num = "0" + num
+        }
+        return num;
+      }
+      function formatTime(seconds) {
+        var m = Math.floor(seconds / 60);
+        var s = seconds - m * 60;
+        return m + ":" + padWithZeros(s);
       }
       
       
@@ -141,7 +177,92 @@
         
         return color;
       }
-      
+
+      function createBird() {
+        var y = Math.random() * 200;
+        var bird = document.createElement('div');
+        $(bird).addClass('bird');
+        var direction = Math.random() > 0.5 ? -1: 1;
+        $(bird).css('top', y);
+        var x = stageWidth;
+        var ySpeed = 5;
+        if (direction == -1) {
+          x = stageWidth;
+        } else {
+          $(bird).addClass('flip-horizontal');
+          x = 0;
+        }
+        var speed = Math.random() * 5 + 2;
+        var alive = true;
+        var inWater = false;
+        $(bird).css('left', x);
+        $('body').append(bird);
+        var timer = setInterval(function() {
+          if (alive) {
+            var dx = catX - x;
+            var dy = catY - y;
+            dist = Math.sqrt(dx * dx + dy * dy);
+            if (dist < 30) {
+              var croak = new Audio('croak.mp3');
+              croak.play();
+              $(bird).css('background', 'url("dead.png")');
+              points += Math.round(5 * speed);
+              $('.points').text(points);
+              alive = false;
+            }
+            x += speed * direction;
+            if (x < -50 || x > stageWidth + 50) {
+              clearInterval(timer);
+              $(bird).remove();
+            }
+            $(bird).css('left', x + 'px');
+          } else {
+            x += speed * direction;
+            speed *= 0.95;
+            if (!inWater) {
+              p = particles[findClosestParticle(x, y)];
+              var dx = p.x - x;
+              var dy = p.y - y;
+              var dist = Math.sqrt(dx * dx + dy * dy);
+              if (dist < 40) {
+                p.y -= 100;
+                var splash = new Audio('splash.mp3');
+                splash.play();
+                inWater = true;
+              }
+              ySpeed += 0.2;
+              if (ySpeed > 10) {
+                ySpeed = 10;
+              }
+            } else {
+              ySpeed = 3;
+            }
+            y += ySpeed;
+          }
+          if (y > stageHeight) {
+            clearInterval(timer);
+            $(bird).remove();
+          }
+          $(bird).css('left', x + 'px');
+          $(bird).css('top', y + 'px');
+        }, 20);
+      }
+
+      function birdTimer() {
+        if (lives >= 0 && timeLeft >= 0) {
+          setTimeout(function() {
+            createBird();
+            birdTimer();
+          }, Math.random() * 4000 + 500)
+        }
+      }
+      createBird();
+      birdTimer();
+
+
+      setTimeout(function() {
+        createBird
+      }, Math.random()) 
       
       function generate()
       {
@@ -207,10 +328,29 @@
           }
         return target;
       }
+
+      function gameOver() {
+        clearInterval(gameLoop);
+        $('.bird').fadeOut(function(){
+          $(this).remove();
+        });
+        $('canvas').fadeOut(function() {
+          $('#gameover').fadeIn();
+        });
+        $('#sun').fadeOut();
+      };
       
+      $('#timeLeft').text(formatTime(timeLeft));
+      setInterval(function(){
+        timeLeft--;
+        $('#timeLeft').text(formatTime(timeLeft));
+        if(timeLeft <= 0) {
+          gameOver();
+        }
+      }, 1000);
       
       $('body').click(function() {
-        if (catOnBoat && lives >= 0) {
+        if (catOnBoat && lives >= 0 && timeLeft > 0) {
           catX = boatX;
           catY = boatY - 30;
           catOnBoat = false;
@@ -218,8 +358,9 @@
           catSpeedX = (targetX - boatX) * 0.05;
           catSound = (catSound + 1) % 3;
           var cat = new Audio('cat' + catSound + '.m4a');
+          cat.volume = 0.8;
           cat.play();
-          if (mouseX > targetX) {
+          if (direction == 'left') {
             catRotateSpeed = 0.01;
           } else {
             catRotateSpeed = -0.01;
@@ -229,10 +370,12 @@
 
        function mouseMove()
        { 
-         if (oldX <= mouseX) {
+         if (oldX < mouseX) {
            boatSprite = boatRightSprite;
-         } else {
+           direction = 'left';
+         } else if( oldX > mouseX) {
            boatSprite = boatLeftSprite;
+           direction = 'right';
          }
          oldX = mouseX;
          //var target = findClosestParticle(mouseX, mouseY);
@@ -313,23 +456,30 @@
         
         targetX = mouseX;
         boatX -= (boatX - targetX) / 15;
+        var volume = Math.abs(boatX - targetX) / stageWidth * 2;
+        if (volume < 0.3) {
+          volume = 0.3;
+        }
+        if (volume > 0.8) {
+          volume = 0.8;
+        }
+        $('#boatSound')[0].volume = volume;
         var closestParticleIndex = findClosestParticle(boatX, boatY);
         var closestParticle = particles[closestParticleIndex];
-        targetY = closestParticle.y - boatSprite.height;
+        targetY = closestParticle.y - boatSprite.height * 0.5;
         boatY -= (boatY - targetY) / 5;
 
 
         var targetRot = findAngle(closestParticleIndex);
         context.save();
         context.translate(boatX, boatY);
-        boatRot -= (boatRot - targetRot) / 50;
+        boatRot -= (boatRot - targetRot) / 20;
         context.rotate(boatRot);
-        context.translate(-boatSprite.width * 0.5, 0);
-        context.drawImage(boatSprite, 0, 0);
+        context.drawImage(boatSprite, -boatSprite.width * 0.5, -boatSprite.height * 0.5);
+
         if (catOnBoat) {
           renderCat();
         }
-        context.scale(-1, 1);
         context.restore();
 
         if (!catOnBoat) {
@@ -338,6 +488,8 @@
           context.restore();
         }
         renderCable();
+
+        renderSparks();
 
         
         /*var i = particles.length;
@@ -351,13 +503,51 @@
 
         }*/
       }
+      var sparkOpacity = 1;
+      function shootSparks () {
+        if (sparkOpacity < 0) {
+          var spark = new Audio('spark.mp3');
+          spark.volume = 0.1;
+          spark.play();
+          sparkOpacity = 1;
+          for (var i = 0; i < sparkCount; i++) {
+            sparks[i] = {};
+            sparks[i].x = cable[cable.length -1].x;
+            sparks[i].y = cable[cable.length -1].y;
+            sparks[i].xSpeed = Math.random() * 4 - 2;
+            sparks[i].ySpeed = Math.random() * 4 - 2;
+            if (sparks[i].x < 0.5 && sparks[i].x > -0.5) {
+              sparks[i].x = 2;
+            }
+          }
+        }
+      }
+      function renderSparks() {
+        sparkOpacity -= 0.02;
+        if (sparkOpacity > 0) {
+          for (var i = 0; i < sparks.length; i++) {
+            sparks[i].x += sparks[i].xSpeed;
+            sparks[i].y += sparks[i].ySpeed;
+            sparks[i].ySpeed += 0.1;
+            context.save();
+            var yellow = Math.round(Math.random() * 100 + 150);
+            context.strokeStyle = "rgba(255," + yellow + ", 0," + sparkOpacity + ")";
+            var angle = Math.atan2(sparks[i].ySpeed, sparks[i].xSpeed);
+            context.beginPath();
+            context.moveTo(sparks[i].x, sparks[i].y);
+            context.lineTo(sparks[i].x + Math.cos(angle) * 10, sparks[i].y + Math.sin(angle) * 10);
+            context.stroke();
+            context.restore();
+          }
+        }
+      }
+
 
       function renderCat() {
         if (!catOnBoat) {
           if (catInWater) {
             catSpeedY = -5;
             catSpeedX *= 0.8;
-            catRotate += 0.01;
         } else {
             catSpeedY -= 1;
           }
@@ -374,11 +564,11 @@
           context.rotate(catRotate);
           context.drawImage(catSprite, 0, 0);
 
-          if (catSpeedY < 0) {
+          if (catSpeedY < 0 && !catInWater) {
             var dx = catX - boatX;
             var dy = catY - boatY;
             var dist = Math.sqrt(dx * dx + dy * dy);
-            if (dist < 150) {
+            if (dist < 100) {
               catOnBoat = true;
               catRotate = 0;
             } else if (!catInWater) {
@@ -402,28 +592,26 @@
             if (lives >= 0) {
               $('#lifecount').text(lives);
             } else {
-              $('canvas').fadeOut();
-              $('#sun').fadeOut();
+              gameOver();
             }
           }
         } else {
-          context.drawImage(catSprite, 120, -30);
+          context.drawImage(catSprite, 0, -70);
         }
       }
 
       function renderCable() {
         cable[0].x = boatX + 20;
-        cable[0].y = boatY + 40;
+        cable[0].y = boatY;
         for (var i = 1; i < cable.length; i++) {
           cable[i].y += 2;
         }
 
 
         context.beginPath();
-        for (cableIndex in cable) {
-          var index = parseInt(cableIndex);
-          var particle = cable[index];
-          var nextParticle = cable[index + 1];
+        for (var i = 0; i < cable.length - 1; i++) {
+          var particle = cable[i];
+          var nextParticle = cable[i + 1];
 
           var dx = nextParticle.x - particle.x;
           var dy = nextParticle.y - particle.y;
@@ -438,6 +626,14 @@
           context.moveTo(particle.x, particle.y);
           context.lineTo(nextParticle.x, nextParticle.y);
           context.stroke();
+        }
+        var lastCable = cable[cable.length -1];
+        var p = particles[findClosestParticle(lastCable.x, lastCable.y)];
+        var dx = lastCable.x - p.x
+        var dy = lastCable.y - p.y;
+        var dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < 10) {
+          shootSparks();
         }
       }
 
